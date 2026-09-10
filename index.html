@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>苍井寿司 · 巡检标准闯关</title>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -174,7 +177,7 @@ function saveLocal(rec){
 }
 async function fetchCloud(){
   const r=await fetch(LB_URL,{cache:'no-store'});
-  if(!r.ok) throw new Error('bad');
+  if(!r.ok) throw new Error('GET '+r.status);
   const j=await r.json();
   return (j&&j.data&&Array.isArray(j.data.list))?j.data.list:[];
 }
@@ -184,12 +187,14 @@ async function pushCloud(rec){
   try{
     const cur=await fetchCloud();
     const list=sortLB(mergeLB(cur, localLB(), [rec])).slice(0,300);
-    await fetch(LB_URL,{method:'PUT',headers:{'Content-Type':'application/json'},
+    const w=await fetch(LB_URL,{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:LB_NAME,data:{v:1,list:list}})});
-    return list;
+    if(!w.ok) throw new Error('PUT '+w.status);
+    return {ok:true, list:list};
   }catch(e){
     // 云端暂不可达：只更新本机，不覆盖云端，稍后重试
-    return sortLB(mergeLB(localLB(),[rec]));
+    const list=sortLB(mergeLB(localLB(),[rec]));
+    return {ok:false, list:list, error:String(e.message||e)};
   }
 }
 
@@ -375,10 +380,16 @@ function showEnd(){
 async function uploadScore(){
   const tip=document.getElementById('upTip');
   const rEl=document.getElementById('myRank');
-  const list=await pushCloud(myRec);
+  const {ok,list,error}=await pushCloud(myRec);
   const pos=list.findIndex(x=>x.d===myRec.d)+1;
   if(rEl) rEl.textContent = pos>0 ? ('第'+pos) : '—';
-  if(tip) tip.innerHTML='成绩已记录 · 共 <b>'+list.length+'</b> 人参与 · 同分按用时短者领先';
+  if(tip){
+    if(ok){
+      tip.innerHTML='成绩已同步到云端 · 共 <b>'+list.length+'</b> 人参与 · 同分按用时短者领先';
+    }else{
+      tip.innerHTML='<span style="color:#b3261e">⚠️ 云端同步失败（'+esc(error)+'），成绩已保存在本机。可在网络畅通时重新进入排行榜尝试同步。</span>';
+    }
+  }
 }
 
 function copyScore(){
@@ -412,11 +423,14 @@ async function pollLB(){
     const merged=sortLB(mergeLB(cloud||[], localLB()));
     const rowsEl=document.getElementById('lbrows');
     const noteEl=document.getElementById('lbnote');
-    if(rowsEl) rowsEl.innerHTML=lbRowsHTML(merged, 'cloud');
+    if(rowsEl) rowsEl.innerHTML=lbRowsHTML(merged.slice(0,50), 'cloud');
     if(noteEl) noteEl.innerHTML = merged.length
       ? ('共 '+merged.length+' 人参与 · 分数高者优先，同分用时短者领先')
       : '还没有人上榜<br>快去挑战，抢下第一名 🏆';
-  }catch(e){ /* 云端暂不可达，保持当前显示 */ }
+  }catch(e){
+    const noteEl=document.getElementById('lbnote');
+    if(noteEl) noteEl.innerHTML='<span style="color:#b3261e">⚠️ 实时同步失败：'+esc(String(e.message||e))+'</span>';
+  }
 }
 
 function renderLB(mode, cloud, cloudOk){
