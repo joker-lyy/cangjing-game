@@ -10,7 +10,7 @@
        background:linear-gradient(160deg,#0f2c5c,#1b4fa0);color:#1d2433;min-height:100vh;
        display:flex;justify-content:center;padding:14px}
   .app{width:100%;max-width:480px;background:#fff;border-radius:18px;overflow:hidden;
-       box-shadow:0 14px 40px rgba(0,0,0,.35);display:flex;flex-direction:column}
+       box-shadow:0 14px 40px rgba(0,0,0,.35);display:flex;flex-direction:column;max-height:100vh}
   .hd{background:linear-gradient(135deg,#1b4fa0,#2f7bf6);color:#fff;padding:16px 18px 13px}
   .hdtop{display:flex;align-items:flex-start;gap:8px}
   .hdtop>div{flex:1;min-width:0}
@@ -28,7 +28,7 @@
   .hdinfo .who{opacity:.9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hdinfo .clk{flex:none;background:rgba(0,0,0,.22);border-radius:14px;padding:4px 11px;
                font-variant-numeric:tabular-nums;letter-spacing:.5px}
-  .body{padding:18px;flex:1}
+  .body{padding:18px;flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .qmeta{font-size:12px;color:#2f7bf6;font-weight:700;letter-spacing:.5px}
   .qcnt{float:right;color:#9aa3b2;font-weight:600}
   .stage{display:inline-block;background:#eaf2ff;color:#1b4fa0;border-radius:6px;
@@ -179,13 +179,18 @@ async function fetchCloud(){
   return (j&&j.data&&Array.isArray(j.data.list))?j.data.list:[];
 }
 async function pushCloud(rec){
-  // 合并本机全部成绩 + 本次成绩（按 d 去重），no-cors 尽力上传云端，file:// 也能发
-  const list=sortLB(mergeLB(localLB(),[rec])).slice(0,300);
+  // 先读云端当前榜，再与本机+本次成绩合并后写回（读改写，避免覆盖他人成绩）
+  // 用默认 cors 模式（非 no-cors），PUT+application/json 才真正能通过预检写入云端
   try{
-    await fetch(LB_URL,{method:'PUT',mode:'no-cors',headers:{'Content-Type':'application/json'},
+    const cur=await fetchCloud();
+    const list=sortLB(mergeLB(cur, localLB(), [rec])).slice(0,300);
+    await fetch(LB_URL,{method:'PUT',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({name:LB_NAME,data:{v:1,list:list}})});
-  }catch(e){}
-  return list;
+    return list;
+  }catch(e){
+    // 云端暂不可达：只更新本机，不覆盖云端，稍后重试
+    return sortLB(mergeLB(localLB(),[rec]));
+  }
 }
 
 /* ---------- 启动页 ---------- */
