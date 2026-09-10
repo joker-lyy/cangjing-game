@@ -140,7 +140,7 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 let quiz=[], idx=0, score=0, cur=null;
 let picked1=false, picked2=false;
 let user={n:'',sh:''};
-let startTs=0, timerId=null, elapsed=0, myRec=null;
+let startTs=0, timerId=null, elapsed=0, myRec=null, lbTimer=null;
 
 const body=document.getElementById('body');
 const bar=document.getElementById('bar');
@@ -191,6 +191,7 @@ async function pushCloud(rec){
 /* ---------- 启动页 ---------- */
 function showStart(){
   clearInterval(timerId); timerId=null;
+  clearInterval(lbTimer); lbTimer=null;
   hdinfo.classList.remove('show');
   bar.style.width='0%';
   try{const u=JSON.parse(localStorage.getItem('cj_user')||'{}');
@@ -386,6 +387,7 @@ function copyScore(){
 /* ---------- 排行榜页 ---------- */
 async function showLB(mode){
   clearInterval(timerId); timerId=null;
+  clearInterval(lbTimer); lbTimer=null;
   body.innerHTML='<div class="empty">排行榜加载中…</div>';
   let cloud=null, cloudOk=true;
   if(mode==='cloud'){
@@ -393,6 +395,23 @@ async function showLB(mode){
     cloud = sortLB(mergeLB(cloud||[], localLB()));
   }
   renderLB(mode, cloud, cloudOk);
+  // 全员榜实时刷新：每 5 秒拉一次云端并合并本机，无需手动刷新
+  if(mode==='cloud'){
+    lbTimer=setInterval(()=>pollLB(), 5000);
+  }
+}
+
+async function pollLB(){
+  try{
+    const cloud=await fetchCloud();
+    const merged=sortLB(mergeLB(cloud||[], localLB()));
+    const rowsEl=document.getElementById('lbrows');
+    const noteEl=document.getElementById('lbnote');
+    if(rowsEl) rowsEl.innerHTML=lbRowsHTML(merged, 'cloud');
+    if(noteEl) noteEl.innerHTML = merged.length
+      ? ('共 '+merged.length+' 人参与 · 分数高者优先，同分用时短者领先')
+      : '还没有人上榜<br>快去挑战，抢下第一名 🏆';
+  }catch(e){ /* 云端暂不可达，保持当前显示 */ }
 }
 
 function renderLB(mode, cloud, cloudOk){
@@ -407,19 +426,7 @@ function renderLB(mode, cloud, cloudOk){
     list=sortLB(localLB());
     note='只统计这台手机 / 电脑上玩过的成绩';
   }
-  const top=list.slice(0,20);
-  const rows = top.length ? top.map((x,i)=>{
-    const me = myRec && x.d===myRec.d;
-    const tcls = i===0?'t1':(i===1?'t2':(i===2?'t3':''));
-    const medal = i===0?'🥇':(i===1?'🥈':(i===2?'🥉':(i+1)));
-    return `<div class="lbrow ${me?'me':''}">
-      <div class="no ${tcls}">${medal}</div>
-      <div class="nm">${esc(x.n)}${me?' <b style="color:#e6a919">(我)</b>':''}<span>${esc(x.sh)||'未填门店'}</span></div>
-      <div class="sc">${x.s}分</div>
-      <div class="tm">${fmt(x.t||0)}</div>
-    </div>`;
-  }).join('') : '<div class="empty">还没有人上榜<br>快去挑战，抢下第一名 🏆</div>';
-
+  const top=list.slice(0,50);
   body.innerHTML = `
     <div class="tabs">
       <button class="${mode==='cloud'?'on':''}" onclick="showLB('cloud')">🏆 全员榜</button>
@@ -431,10 +438,24 @@ function renderLB(mode, cloud, cloudOk){
       <div style="width:52px;text-align:right">成绩</div>
       <div style="width:62px;text-align:right">用时</div>
     </div>
-    ${rows}
-    <div class="tip">${note}</div>
+    <div id="lbrows">${lbRowsHTML(top, mode)}</div>
+    <div id="lbnote" class="tip">${note}</div>
     <button class="next" onclick="showStart()">开始挑战 / 再来一局</button>
     ${CLEAR_BTN}`;
+}
+
+function lbRowsHTML(list, mode){
+  return list.length ? list.map((x,i)=>{
+    const me = myRec && x.d===myRec.d;
+    const tcls = i===0?'t1':(i===1?'t2':(i===2?'t3':''));
+    const medal = i===0?'🥇':(i===1?'🥈':(i===2?'🥉':(i+1)));
+    return `<div class="lbrow ${me?'me':''}">
+      <div class="no ${tcls}">${medal}</div>
+      <div class="nm">${esc(x.n)}${me?' <b style="color:#e6a919">(我)</b>':''}<span>${esc(x.sh)||'未填门店'}</span></div>
+      <div class="sc">${x.s}分</div>
+      <div class="tm">${fmt(x.t||0)}</div>
+    </div>`;
+  }).join('') : '<div class="empty">还没有人上榜<br>快去挑战，抢下第一名 🏆</div>';
 }
 
 /* ---------- 清除排行榜（管理用）---------- */
