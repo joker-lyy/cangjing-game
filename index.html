@@ -200,7 +200,7 @@ async function pushCloud(rec){
       if(!head.ok) throw new Error('HEAD '+head.status);
       const sha=(await head.json()).sha;
       const w=await fetch(LB_API,{method:'PUT',headers:{'Authorization':'token '+GH_TOKEN,'Content-Type':'application/json'},
-        body:JSON.stringify({message:'update leaderboard',sha:sha,content:b64enc(JSON.stringify(list)})})});
+        body:JSON.stringify({message:'update leaderboard',sha:sha,content:b64enc(JSON.stringify(list))})});
       if(!w.ok) throw new Error('PUT '+w.status);
       return {ok:true, list:list};
     }catch(e){
